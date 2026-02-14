@@ -88,7 +88,7 @@ export default function Dashboard() {
 
   const statCards = [
     { label: "Total Problems", value: stats.totalProblems, icon: Code2, color: "text-primary" },
-    { label: "Active Contests", value: stats.activeContests, icon: Trophy, color: "text-secondary" },
+    { label: "Active Lab Exams", value: stats.activeContests, icon: Trophy, color: "text-secondary" },
     { label: "Submissions", value: stats.totalSubmissions, icon: FileText, color: "text-chart-3" },
     { label: "Acceptance Rate", value: `${stats.acceptanceRate}%`, icon: TrendingUp, color: "text-chart-4" },
   ];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, GripVertical, Trophy, Users, BarChart3, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,9 +57,11 @@ const submissionStatusColor: Record<string, string> = {
 export default function ContestDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || "problems";
   const [contest, setContest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("problems");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [allProblems, setAllProblems] = useState<any[]>([]);
@@ -80,7 +82,7 @@ export default function ContestDetailPage() {
       setContest(res.data);
     } catch (err: any) {
       console.error('[ContestDetailPage] Failed to load contest:', err);
-      toast.error(err.message || "Failed to load contest");
+      toast.error(err.message || "Failed to load lab exam");
     }
     setLoading(false);
   };
@@ -158,7 +160,7 @@ export default function ContestDetailPage() {
         points: parseInt(addForm.points),
         label: addForm.label,
       });
-      toast.success("Problem added to contest");
+      toast.success("Problem added to lab exam");
       setAddDialogOpen(false);
       fetchContest();
     } catch (err: any) {
@@ -168,7 +170,7 @@ export default function ContestDetailPage() {
   };
 
   const handleRemoveProblem = async (problemId: string) => {
-    if (!confirm("Remove this problem from the contest?")) return;
+    if (!confirm("Remove this problem from the lab exam?")) return;
     if (!id) return;
     try {
       await removeProblemFromContest(id, problemId);
@@ -225,9 +227,9 @@ export default function ContestDetailPage() {
   if (!contest) {
     return (
       <div className="glass-card p-8 text-center">
-        <p className="text-muted-foreground">Contest not found</p>
+        <p className="text-muted-foreground">Lab exam not found</p>
         <Button variant="outline" className="mt-4" onClick={() => navigate("/admin/contests")}>
-          <ArrowLeft className="w-4 h-4 mr-2" />Back to Contests
+          <ArrowLeft className="w-4 h-4 mr-2" />Back to Lab Exams
         </Button>
       </div>
     );
@@ -269,7 +271,7 @@ export default function ContestDetailPage() {
 
         <TabsContent value="problems" className="mt-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Contest Problems</h2>
+            <h2 className="text-lg font-semibold">Lab Exam Problems</h2>
             {contest.status === "DRAFT" && (
               <Button onClick={openAddProblem}>
                 <Plus className="w-4 h-4 mr-2" />Add Problem
@@ -365,7 +367,7 @@ export default function ContestDetailPage() {
 
         <TabsContent value="submissions" className="mt-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Contest Submissions</h2>
+            <h2 className="text-lg font-semibold">Lab Exam Submissions</h2>
             <Button variant="outline" size="sm" onClick={fetchSubmissions}>
               <RefreshCw className="w-4 h-4 mr-2" />Refresh
             </Button>
@@ -413,7 +415,7 @@ export default function ContestDetailPage() {
       {/* Add Problem Dialog */}
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Add Problem to Contest</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Add Problem to Lab Exam</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="space-y-2">
               <Label>Problem</Label>

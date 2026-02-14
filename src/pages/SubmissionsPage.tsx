@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Trash2, Eye, RefreshCw, BarChart3, Download, FileJson } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Trash2, Eye, RefreshCw, BarChart3, Download, FileJson, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { getAllSubmissions, getSubmission, getSubmissionStats, deleteSubmission } from "@/lib/api";
+import { getAllSubmissions, getSubmission, getSubmissionStats, deleteSubmission, getAllModules, getAllProblems } from "@/lib/api";
 import { exportToCSV, exportToJSON, prepareSubmissionsForExport, flattenForCSV } from "@/lib/export";
 import { toast } from "sonner";
 
@@ -18,23 +19,47 @@ const statusColor: Record<string, string> = {
 };
 
 export default function SubmissionsPage() {
+  const [searchParams] = useSearchParams();
+  const contestId = searchParams.get('contestId');
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [moduleFilter, setModuleFilter] = useState("all");
+  const [problemFilter, setProblemFilter] = useState("all");
+  const [viewFilter, setViewFilter] = useState("all"); // all, contest, practice
   const [stats, setStats] = useState<any>(null);
   const [detail, setDetail] = useState<any>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [modules, setModules] = useState<any[]>([]);
+  const [problems, setProblems] = useState<any[]>([]);
 
   const fetchData = async () => {
-    console.log('[SubmissionsPage] Fetching submissions with filter:', statusFilter);
+    console.log('[SubmissionsPage] Fetching submissions with filters:', { statusFilter, moduleFilter, problemFilter, viewFilter, contestId });
     setLoading(true);
     try {
       const params: Record<string, string> = { limit: "50" };
       if (statusFilter !== "all") params.status = statusFilter;
+      if (moduleFilter !== "all") params.moduleId = moduleFilter;
+      if (problemFilter !== "all") params.problemId = problemFilter;
+      if (contestId) params.contestId = contestId;
+      
+      // Handle view filter: contest/practice
+      if (viewFilter === "contest") {
+        params.isContestSubmission = "true";
+      } else if (viewFilter === "practice") {
+        params.isContestSubmission = "false";
+      }
+      
+      const statsParams: Record<string, string> = {};
+      if (contestId) statsParams.contestId = contestId;
+      if (moduleFilter !== "all") statsParams.moduleId = moduleFilter;
+      if (problemFilter !== "all") statsParams.problemId = problemFilter;
+      if (viewFilter === "contest") statsParams.isContestSubmission = "true";
+      if (viewFilter === "practice") statsParams.isContestSubmission = "false";
       
       const [sRes, stRes] = await Promise.allSettled([
         getAllSubmissions(Object.keys(params).length > 0 ? params : undefined),
-        getSubmissionStats(),
+        getSubmissionStats(Object.keys(statsParams).length > 0 ? statsParams : undefined),
       ]);
       
       console.log('[SubmissionsPage] Raw responses:', { sRes, stRes });
@@ -61,7 +86,32 @@ export default function SubmissionsPage() {
   useEffect(() => { 
     console.log('[SubmissionsPage] Component mounted or filter changed');
     fetchData(); 
-  }, [statusFilter]);
+  }, [statusFilter, moduleFilter, problemFilter, viewFilter, contestId]);
+
+  useEffect(() => {
+    // Fetch modules and problems for filters
+    const fetchFilters = async () => {
+      try {
+        const [modulesRes, problemsRes] = await Promise.allSettled([
+          getAllModules(),
+          getAllProblems({ limit: "500" }),
+        ]);
+        
+        if (modulesRes.status === "fulfilled") {
+          const modulesData = modulesRes.value.data?.modules || modulesRes.value.data || [];
+          setModules(Array.isArray(modulesData) ? modulesData : []);
+        }
+        
+        if (problemsRes.status === "fulfilled") {
+          const problemsData = problemsRes.value.data?.problems || problemsRes.value.data || [];
+          setProblems(Array.isArray(problemsData) ? problemsData : []);
+        }
+      } catch (error) {
+        console.error('[SubmissionsPage] Failed to load filters:', error);
+      }
+    };
+    fetchFilters();
+  }, []);
 
   const viewDetail = async (id: string) => {
     try {
@@ -92,8 +142,8 @@ export default function SubmissionsPage() {
     <div>
       <div className="flex items-center justify-between page-header">
         <div>
-          <h1 className="page-title">Submissions</h1>
-          <p className="page-subtitle">Review all code submissions</p>
+          <h1 className="page-title">{contestId ? "Lab Exam Submissions" : "Submissions"}</h1>
+          <p className="page-subtitle">{contestId ? "Review lab exam-specific submissions" : "Review all code submissions"}</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
           <RefreshCw className={`w-4 h-4 mr-2 ${loading ? "animate-spin" : ""}`} />Refresh
@@ -118,7 +168,35 @@ export default function SubmissionsPage() {
       )}
 
       {/* Filter */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-center gap-4 mb-6 flex-wrap">
+        {!contestId && (
+          <Select value={viewFilter} onValueChange={(v) => { setViewFilter(v); setProblemFilter("all"); setModuleFilter("all"); }}>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Filter by type" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Submissions</SelectItem>
+              <SelectItem value="practice">Practice Only</SelectItem>
+              <SelectItem value="contest">Contest Only</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={moduleFilter} onValueChange={(v) => { setModuleFilter(v); setProblemFilter("all"); }}>
+          <SelectTrigger className="w-48"><SelectValue placeholder="Filter by module" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Modules</SelectItem>
+            {modules.map((m) => (
+              <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={problemFilter} onValueChange={setProblemFilter}>
+          <SelectTrigger className="w-48"><SelectValue placeholder="Filter by problem" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Problems</SelectItem>
+            {(moduleFilter === "all" ? problems : problems.filter(p => p.module?.id === moduleFilter)).map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-48"><SelectValue placeholder="Filter by status" /></SelectTrigger>
           <SelectContent>
@@ -144,6 +222,7 @@ export default function SubmissionsPage() {
           <thead>
             <tr className="border-b border-border text-muted-foreground">
               <th className="text-left p-4 font-medium">Problem</th>
+              {!contestId && <th className="text-left p-4 font-medium">Contest</th>}
               <th className="text-left p-4 font-medium">Student</th>
               <th className="text-left p-4 font-medium">Language</th>
               <th className="text-left p-4 font-medium">Status</th>
@@ -154,13 +233,25 @@ export default function SubmissionsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
+              <tr><td colSpan={contestId ? 7 : 8} className="p-8 text-center text-muted-foreground">Loading...</td></tr>
             ) : submissions.length === 0 ? (
-              <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No submissions found.</td></tr>
+              <tr><td colSpan={contestId ? 7 : 8} className="p-8 text-center text-muted-foreground">No submissions found.</td></tr>
             ) : (
               submissions.map(s => (
                 <tr key={s.id} className="table-row-hover border-b border-border/50">
                   <td className="p-4 font-medium text-foreground">{s.problem?.title || "—"}</td>
+                  {!contestId && (
+                    <td className="p-4">
+                      {s.contest ? (
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Trophy className="w-3.5 h-3.5 text-warning" />
+                          <span className="text-foreground">{s.contest.title}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Practice</span>
+                      )}
+                    </td>
+                  )}
                   <td className="p-4 text-muted-foreground">{s.student ? `${s.student.firstName || ''} ${s.student.lastName || ''}`.trim() || s.student.email || "—" : "—"}</td>
                   <td className="p-4"><Badge variant="outline" className="text-xs">{s.language}</Badge></td>
                   <td className="p-4">
@@ -197,6 +288,11 @@ export default function SubmissionsPage() {
               </div>
               <div>
                 <p className="text-muted-foreground mb-1">Problem: <span className="text-foreground font-medium">{detail.problem?.title || "—"}</span></p>
+                {detail.contest && (
+                  <p className="text-muted-foreground mb-1">
+                    Contest: <span className="text-foreground inline-flex items-center gap-1.5"><Trophy className="w-3.5 h-3.5 text-warning" />{detail.contest.title}</span>
+                  </p>
+                )}
                 <p className="text-muted-foreground">Student: <span className="text-foreground">{detail.student ? `${detail.student.firstName || ''} ${detail.student.lastName || ''}`.trim() || detail.student.email || "—" : "—"}</span></p>
               </div>
               {detail.code && (

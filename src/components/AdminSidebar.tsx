@@ -18,7 +18,7 @@ const links = [
   { to: "/admin/tags", icon: Tags, label: "Tags" },
   { to: "/admin/modules", icon: Box, label: "Modules" },
   { to: "/admin/problems", icon: Code2, label: "Problems" },
-  { to: "/admin/contests", icon: Trophy, label: "Contests" },
+  { to: "/admin/contests", icon: Trophy, label: "Lab Exams" },
   { to: "/admin/submissions", icon: FileText, label: "Submissions" },
 ];
 

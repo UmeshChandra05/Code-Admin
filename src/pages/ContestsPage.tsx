@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { getAllContests, createContest, updateContest, deleteContest, publishContest, updateContestStatuses, getContest } from "@/lib/api";
+import { getAllContests, createContest, updateContest, deleteContest, publishContest, updateContestStatuses, getContest, getAllModules, getAllProblems } from "@/lib/api";
 import { exportToCSV, exportToJSON, prepareContestsForExport, flattenForCSV } from "@/lib/export";
 import { toast } from "sonner";
 
@@ -23,7 +23,9 @@ interface Contest {
   endTime: string;
   duration: number;
   isActive: boolean;
+  totalPoints?: number;
   _count?: { registrations?: number; problems?: number };
+  problems?: any[];
 }
 
 const statusColor: Record<string, string> = {
@@ -40,6 +42,10 @@ export default function ContestsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingContest, setEditingContest] = useState<Contest | null>(null);
+  const [moduleFilter, setModuleFilter] = useState("all");
+  const [problemFilter, setProblemFilter] = useState("all");
+  const [modules, setModules] = useState<any[]>([]);
+  const [problems, setProblems] = useState<any[]>([]);
   const [form, setForm] = useState({
     title: "", description: "", rules: "", visibility: "PUBLIC",
     startTime: "", endTime: "", duration: "120", maxAttempts: "10",
@@ -67,6 +73,31 @@ export default function ContestsPage() {
     fetchContests(); 
   }, []);
 
+  useEffect(() => {
+    // Fetch modules and problems for filters
+    const fetchFilters = async () => {
+      try {
+        const [modulesRes, problemsRes] = await Promise.allSettled([
+          getAllModules(),
+          getAllProblems({ limit: "500" }),
+        ]);
+        
+        if (modulesRes.status === "fulfilled") {
+          const modulesData = modulesRes.value.data?.modules || modulesRes.value.data || [];
+          setModules(Array.isArray(modulesData) ? modulesData : []);
+        }
+        
+        if (problemsRes.status === "fulfilled") {
+          const problemsData = problemsRes.value.data?.problems || problemsRes.value.data || [];
+          setProblems(Array.isArray(problemsData) ? problemsData : []);
+        }
+      } catch (error) {
+        console.error('[ContestsPage] Failed to load filters:', error);
+      }
+    };
+    fetchFilters();
+  }, []);
+
   const openCreate = () => {
     setEditingContest(null);
     const now = new Date();
@@ -84,7 +115,7 @@ export default function ContestsPage() {
 
   const openEdit = async (contest: Contest) => {
     if (contest.status !== "DRAFT") {
-      return toast.error("Only DRAFT contests can be edited");
+      return toast.error("Only DRAFT lab exams can be edited");
     }
     try {
       const res = await getContest(contest.id);
@@ -106,7 +137,7 @@ export default function ContestsPage() {
       });
       setDialogOpen(true);
     } catch (err: any) {
-      toast.error(err.message || "Failed to load contest");
+      toast.error(err.message || "Failed to load lab exam");
     }
   };
 
@@ -129,10 +160,10 @@ export default function ContestsPage() {
       
       if (editingContest) {
         await updateContest(editingContest.id, data);
-        toast.success("Contest updated");
+        toast.success("Lab exam updated");
       } else {
         await createContest(data);
-        toast.success("Contest created");
+        toast.success("Lab exam created");
       }
       
       setDialogOpen(false);
@@ -154,7 +185,7 @@ export default function ContestsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this contest?")) return;
+    if (!confirm("Delete this lab exam?")) return;
     try { await deleteContest(id); toast.success("Deleted"); fetchContests(); }
     catch (err: any) { toast.error(err.message); }
   };
@@ -162,20 +193,41 @@ export default function ContestsPage() {
   const handleExportCSV = () => {
     const data = prepareContestsForExport(contests);
     exportToCSV(flattenForCSV(data), 'contests');
-    toast.success("Contests exported to CSV");
+    toast.success("Lab exams exported to CSV");
   };
 
   const handleExportJSON = () => {
     exportToJSON(contests, 'contests');
-    toast.success("Contests exported to JSON");
+    toast.success("Lab exams exported to JSON");
   };
+
+  // Filter contests based on module and problem filters
+  const filteredContests = contests.filter((contest) => {
+    // Filter by module
+    if (moduleFilter !== "all") {
+      const hasModuleProblems = contest.problems?.some((cp: any) => 
+        cp.problem?.moduleId === moduleFilter
+      );
+      if (!hasModuleProblems) return false;
+    }
+    
+    // Filter by problem
+    if (problemFilter !== "all") {
+      const hasProblem = contest.problems?.some((cp: any) => 
+        cp.problem?.id === problemFilter
+      );
+      if (!hasProblem) return false;
+    }
+    
+    return true;
+  });
 
   return (
     <div>
       <div className="flex items-center justify-between page-header">
         <div>
-          <h1 className="page-title">Contests</h1>
-          <p className="page-subtitle">Manage coding competitions</p>
+          <h1 className="page-title">Lab Exams</h1>
+          <p className="page-subtitle">Manage timed coding assessments</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
@@ -189,10 +241,10 @@ export default function ContestsPage() {
           </Button>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button onClick={openCreate}><Plus className="w-4 h-4 mr-2" />Create Contest</Button>
+              <Button onClick={openCreate}><Plus className="w-4 h-4 mr-2" />Create Lab Exam</Button>
             </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{editingContest ? 'Edit Contest' : 'Create Contest'}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{editingContest ? 'Edit Lab Exam' : 'Create Lab Exam'}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2">
                   <Label>Title</Label>
@@ -258,21 +310,64 @@ export default function ContestsPage() {
                 </div>
                 <Button onClick={handleSave} className="w-full" disabled={saving}>
                   {saving && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-                  {editingContest ? 'Update Contest' : 'Create Contest'}
+                  {editingContest ? 'Update Lab Exam' : 'Create Lab Exam'}
                 </Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
       </div>
-
+      {/* Filters */}
+      <div className="glass-card p-4 mb-4">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Filter by Module</Label>
+            <Select value={moduleFilter} onValueChange={setModuleFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Modules" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Modules</SelectItem>
+                {modules.map((m: any) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex-1">
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Filter by Problem</Label>
+            <Select value={problemFilter} onValueChange={setProblemFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Problems" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Problems</SelectItem>
+                {problems.map((p: any) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {(moduleFilter !== "all" || problemFilter !== "all") && (
+            <Button variant="ghost" size="sm" onClick={() => { setModuleFilter("all"); setProblemFilter("all"); }}>
+              Clear Filters
+            </Button>
+          )}
+        </div>
+      </div>
       <div className="grid gap-4">
         {loading ? (
           <div className="glass-card p-8 text-center text-muted-foreground">Loading...</div>
-        ) : contests.length === 0 ? (
-          <div className="glass-card p-8 text-center text-muted-foreground">No contests yet.</div>
+        ) : filteredContests.length === 0 ? (
+          <div className="glass-card p-8 text-center text-muted-foreground">
+            {contests.length === 0 ? "No lab exams yet." : "No lab exams match the selected filters."}
+          </div>
         ) : (
-          contests.map((c, i) => (
+          filteredContests.map((c, i) => (
             <div key={c.id} className="glass-card-hover p-5 animate-slide-up" style={{ animationDelay: `${i * 60}ms` }}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -287,6 +382,11 @@ export default function ContestsPage() {
                     <span>📅 {new Date(c.startTime).toLocaleDateString()}</span>
                     <span>{new Date(c.startTime).toLocaleTimeString()} – {new Date(c.endTime).toLocaleTimeString()}</span>
                     {c._count?.problems !== undefined && <span>📝 {c._count.problems} problems</span>}
+                    {c.totalPoints !== undefined && (
+                      <span className="flex items-center gap-1">
+                        <Trophy className="w-3 h-3 inline" /> {c.totalPoints} points
+                      </span>
+                    )}
                     {c._count?.registrations !== undefined && <span><Users className="w-3 h-3 inline" /> {c._count.registrations}</span>}
                   </div>
                 </div>
@@ -294,26 +394,24 @@ export default function ContestsPage() {
                   <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate(`/admin/contests/${c.id}`)} title="View Details">
                     <Eye className="w-4 h-4" />
                   </Button>
-                  {c.status !== "COMPLETED" && (
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => openEdit(c)} title="Edit Contest">
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                  )}
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => openEdit(c)} title="Edit Lab Exam">
+                    <Pencil className="w-4 h-4" />
+                  </Button>
                   {(c.status === "LIVE" || c.status === "COMPLETED") && (
                     <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate(`/admin/leaderboard/${c.id}`)} title="View Leaderboard">
                       <Trophy className="w-4 h-4" />
                     </Button>
                   )}
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate(`/admin/submissions?contestId=${c.id}`)} title="View Submissions">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate(`/admin/contests/${c.id}?tab=submissions`)} title="View Submissions">
                     <BarChart3 className="w-4 h-4" />
                   </Button>
                   {c.status === "DRAFT" && (
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handlePublish(c.id)} title="Publish Contest">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handlePublish(c.id)} title="Publish Lab Exam">
                       <Send className="w-4 h-4" />
                     </Button>
                   )}
                   {c.status === "DRAFT" && (
-                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive" onClick={() => handleDelete(c.id)} title="Delete Contest">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-destructive" onClick={() => handleDelete(c.id)} title="Delete Lab Exam">
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   )}
